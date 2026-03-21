@@ -1,41 +1,45 @@
 import requests
+import os
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+
 
 def generate_answer(context: str, question: str) -> str:
-    prompt = f"""
-You are a support assistant for Brain Checker.
+    prompt = f"""You are a warm and helpful support assistant for Brain Checker, helping parents understand their child's psychometric counseling report.
 
-You must answer ONLY using the provided counseling report context.
+You must answer ONLY using the provided counseling report context below.
 
 Rules:
-- Do NOT add new information.
-- Do NOT provide diagnosis.
+- Do NOT add new information beyond what is in the context.
+- Do NOT provide any diagnosis or medical advice.
 - Do NOT override counselor recommendations.
-- Keep language simple and parent-friendly.
+- Keep language simple, warm, and parent-friendly — avoid technical jargon.
+- If the answer is not in the context, say: "I'm sorry, I couldn't find that in the report. Please contact your Brain Checker counselor directly."
+- End every response with: "This explanation is based only on the counseling report and does not replace professional guidance."
 
-Context:
+Context from the report:
 {context}
 
-Question:
+Parent's question:
 {question}
-
-End your answer with:
-"This explanation is based only on the counseling report and does not replace professional guidance."
 """
 
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": "mistral",
-            "prompt": prompt,
-            "stream": False,
-            "temperature": 0.2,
-            "top_k": 40,
-            "top_p": 0.9,
-            "num_predict": 256  # Limit response length for faster generation
-        },
-        timeout=180  # Increased timeout
-    )
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    return response.json()["response"]
+    body = {
+        "model": "mistral-small-latest",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 512
+    }
+
+    response = requests.post(MISTRAL_URL, headers=headers, json=body, timeout=60)
+    response.raise_for_status()
+
+    return response.json()["choices"][0]["message"]["content"]

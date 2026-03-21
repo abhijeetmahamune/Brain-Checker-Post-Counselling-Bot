@@ -1,14 +1,17 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pdf_utils import extract_text_from_pdf
 from rag_pipeline import RAGPipeline
 from llm_utils import generate_answer
 import shutil
+import os
 
-app = FastAPI()
+app = FastAPI(title="Brain Checker Report Assistant")
+
 rag = RAGPipeline()
 
-# Allow frontend connection
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,6 +19,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+async def root():
+    """Serve the chat frontend."""
+    return FileResponse("index.html")
 
 
 @app.post("/upload")
@@ -26,7 +35,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
 
     text = extract_text_from_pdf(file_path)
-
     rag.chunk_text(text)
     rag.create_embeddings()
 
@@ -38,7 +46,7 @@ async def ask_question(request: dict):
     question = request.get("question", "")
     if not question:
         return {"error": "No question provided"}
-    
+
     context = rag.retrieve(question)
     answer = generate_answer(context, question)
 
