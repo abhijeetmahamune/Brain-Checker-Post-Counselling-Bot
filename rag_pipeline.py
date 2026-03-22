@@ -1,15 +1,14 @@
-from sentence_transformers import SentenceTransformer
-import faiss
-import numpy as np
 import re
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 
 class RAGPipeline:
     def __init__(self):
         self.chunks = []
-        self.index = None
+        self.vectorizer = TfidfVectorizer(stop_words='english')
+        self.matrix = None
 
     def chunk_text(self, text: str):
         section_headers = [
@@ -21,10 +20,10 @@ class RAGPipeline:
             "Holland Theory",
             "Holland's RIASEC Theory",
             "Carl Jung Personality Score",
-            "COUNSELOR’S REMARK"
+            "COUNSELOR'S REMARK"
         ]
 
-        pattern = "|".join(section_headers)
+        pattern = "|".join(re.escape(h) for h in section_headers)
         sections = re.split(f"({pattern})", text)
 
         self.chunks = []
@@ -32,24 +31,20 @@ class RAGPipeline:
 
         for part in sections:
             if part in section_headers:
-                if current_chunk:
+                if current_chunk.strip():
                     self.chunks.append(current_chunk.strip())
                 current_chunk = part
             else:
                 current_chunk += " " + part
 
-        if current_chunk:
+        if current_chunk.strip():
             self.chunks.append(current_chunk.strip())
 
     def create_embeddings(self):
-        embeddings = model.encode(self.chunks)
+        self.matrix = self.vectorizer.fit_transform(self.chunks)
 
-        dimension = embeddings.shape[1]
-        self.index = faiss.IndexFlatL2(dimension)
-        self.index.add(np.array(embeddings))
-
-    def retrieve(self, question: str):
-        question_embedding = model.encode([question])
-        D, I = self.index.search(np.array(question_embedding), k=1)
-
-        return self.chunks[I[0][0]]
+    def retrieve(self, question: str, k: int = 2) -> str:
+        question_vec = self.vectorizer.transform([question])
+        scores = cosine_similarity(question_vec, self.matrix).flatten()
+        top_indices = np.argsort(scores)[::-1][:k]
+        return "\n\n".join(self.chunks[i] for i in top_indices)
